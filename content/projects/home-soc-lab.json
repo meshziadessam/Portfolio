@@ -1,0 +1,24 @@
+{
+  "order": 1,
+  "title": "Home SOC Lab",
+  "category": "Security monitoring",
+  "description": "A home lab for collecting endpoint telemetry and building Splunk detections and dashboards.",
+  "demo": false,
+  "visual": "network",
+  "tools": [
+    "Splunk",
+    "Sysmon",
+    "Winlogbeat",
+    "Atomic Red Team"
+  ],
+  "sections": [
+    {
+      "title": "Telemetry collection",
+      "text": "Integrated Splunk, Sysmon, and Winlogbeat to collect and analyze Windows and Linux security telemetry."
+    },
+    {
+      "title": "Detection and dashboards",
+      "text": "Used simulated activity to practice identifying authentication anomalies, privilege escalation, and command execution in Splunk."
+    }
+  ]
+}

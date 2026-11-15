@@ -1,0 +1,23 @@
+{
+  "order": 2,
+  "title": "Personal Portfolio",
+  "category": "Web development",
+  "description": "A responsive, statically generated site for presenting projects and sharing the decisions behind them.",
+  "demo": false,
+  "visual": "artifact",
+  "tools": [
+    "Next.js",
+    "TypeScript",
+    "Tailwind CSS"
+  ],
+  "sections": [
+    {
+      "title": "Purpose",
+      "text": "Give each project room to explain its goals and design decisions, while keeping the homepage easy to scan."
+    },
+    {
+      "title": "Implementation",
+      "text": "Project details live in a single configuration file. Next.js generates the homepage, project index, and detail pages at build time."
+    }
+  ]
+}

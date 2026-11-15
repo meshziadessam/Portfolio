@@ -1,0 +1,24 @@
+---
+title: "Reviewing an authentication timeline"
+description: "A fictional example of documenting observations from synthetic event logs."
+date: "2026-11-15"
+category: "DFIR / Fictional demo"
+published: true
+---
+
+## Scope
+
+This example uses a fictional account and synthetic log entries.
+
+## Observations
+
+```json
+{"time":"09:10Z","event":"failed sign-in","account":"training-user"}
+{"time":"09:14Z","event":"successful sign-in","account":"training-user"}
+```
+
+The two records share an account name. Additional context would be needed to determine whether the events came from the same device or session.
+
+## Lessons learned
+
+Record what the evidence shows and document which details still need verification.
