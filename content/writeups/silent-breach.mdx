@@ -1,0 +1,142 @@
+---
+title: "Silent Breach: Endpoint Forensics"
+description: "A CyberDefenders investigation tracing a suspicious download through browser and mail artifacts and recovering encrypted documents."
+date: "2026-11-16"
+category: "DFIR"
+format: markdown
+published: true
+---
+
+CyberDefenders  |  Silent Breach  |  Medium  |  Endpoint Forensics
+
+Investigation date: 16 November 2026     •     Evidence source: ethanPC.ad1
+
+Case outcome: Malicious executable identified, download activity traced, Windows Mail artifacts examined, and encrypted PDF documents recovered.
+Official lab: https://cyberdefenders.org/blueteam-ctf-challenges/silent-breach/
+
+## Lab Overview
+
+Silent Breach is a medium-difficulty CyberDefenders Endpoint Forensics lab. Its stated objectives include examining a forensic image, recovering communication artifacts, analyzing malware behavior, and decrypting affected files. The official tool list includes FTK Imager, a text editor, a SQLite viewer, Strings, and CyberChef.
+
+## Executive Summary
+
+A forensic image of a Windows workstation was examined to investigate a suspicious download and subsequent file encryption. The investigation began with the downloaded executable IMF-Info.pdf.exe, which was assessed as malicious using VirusTotal. Browser download artifacts linked the file to Microsoft Edge. Windows Mail application artifacts led to three IP addresses referenced in a message. Static analysis of the executable exposed a dropped, obfuscated PowerShell script; reversing its character order and Base64 decoding revealed encryption logic and a hardcoded password. Two encrypted documents were recovered from the desktop, decrypted, and reviewed to obtain the challenge secret.
+
+| Artifact | Value |
+| --- | --- |
+| Disk image | ethanPC.ad1 |
+| Suspicious file | IMF-Info.pdf.exe |
+| MD5 | 336A7CF476EBC7548C93507339196ABB |
+| Browser artifact | Microsoft Edge — User Data/Default/History |
+| PowerShell payload | Gz3m6mG3j2TyAqF2Zx4v.ps1 |
+| Recovered files | IMF-Secret.enc and IMF-Mission.enc |
+
+## 1. Evidence Acquisition and Initial Triage
+
+The supplied ethanPC.ad1 forensic image was opened using FTK Imager. Relevant files and user-profile artifacts were exported to a local analysis directory. The Downloads folder contained IMF-Info.pdf.exe, an executable using a PDF-like name. The double extension made it a high-priority triage candidate.
+
+The file MD5 was calculated with PowerShell and submitted to VirusTotal for reputation analysis. VirusTotal flagged the sample as malicious. This reputation result was treated as a triage signal, not as a substitute for behavioral analysis.
+
+```powershell
+Get-FileHash .\IMF-Info.pdf.exe -Algorithm MD5
+```
+
+![Evidence screenshot 1](/writeups/silent-breach/figure-1.png)
+
+*Figure 1 — PowerShell MD5 calculation for the suspicious executable.*
+
+## 2. Browser History and Download Attribution
+
+The investigator examined Chrome and Edge user-profile artifacts. The Chrome History database did not yield the relevant download. The Edge History SQLite database, opened in DB Browser for SQLite, contained a downloads table with a target_path entry for IMF-Info.pdf.exe under C:\Users\ethan\Downloads. Related entries for IMF-Secret.pdf and IMF-Mission.pdf were also visible.
+
+The download-source URL was determined from the Edge download record during the investigation. The exact URL is not reproduced here because it is not legible in the supplied screenshot; the screenshot directly establishes the download record and application attribution.
+
+`AppData\Local\Microsoft\Edge\User Data\Default\History`
+
+![Evidence screenshot 2](/writeups/silent-breach/figure-2.png)
+
+*Figure 2 — Edge History SQLite downloads table showing IMF-Info.pdf.exe.*
+
+## 3. Windows Mail Artifact Examination
+
+The challenge next asked for three server IP addresses referenced in an email. An initial search suggested Windows Mail artifacts, so the NTUSER.DAT registry hive was inspected with RegRipper. The app identifier microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail provided a lead to the corresponding Windows Communications Apps package.
+
+A file-system search for the package directory identified the application LocalState data and the HxStore.hxd database. Strings extracted from HxStore.hxd exposed the IP addresses and surrounding message fragments.
+
+| IP address | Observed context |
+| --- | --- |
+| 145.67.29.88 | At risk |
+| 212.33.10.112 | Partial breach detected |
+| 192.168.16.128 | Referenced in the same extracted message context |
+
+![Evidence screenshot 3](/writeups/silent-breach/figure-3.png)
+
+*Figure 3 — RegRipper reference to the Windows Mail application identifier.*
+
+![Evidence screenshot 4](/writeups/silent-breach/figure-4.png)
+
+*Figure 4 — Windows Communications Apps LocalState containing HxStore.hxd.*
+
+![Evidence screenshot 5](/writeups/silent-breach/figure-5.png)
+
+*Figure 5 — Strings evidence showing the three IP addresses.*
+
+## 4. Malicious Executable and Payload Discovery
+
+To determine the encryption password, the investigator returned to the suspicious executable and reviewed its VirusTotal behavior details. The report showed a dropped PowerShell script named Gz3m6mG3j2TyAqF2Zx4v.ps1. Searching the executable’s extracted content for that filename exposed script content and Node.js execution-related strings.
+
+The executable contained a packaged Node.js application referencing C:\snapshot\pysever\main.js, along with functions and strings consistent with writing a temporary PowerShell script, invoking powershell.exe, and removing the temporary file.
+
+![Evidence screenshot 6](/writeups/silent-breach/figure-6.png)
+
+*Figure 6 — VirusTotal behavior report listing the dropped PowerShell script.*
+
+### 4.1 Identifying the obfuscation
+
+Static inspection showed that the payload reversed and Base64-decoded an embedded string before attempting to execute the decoded script.
+
+The correct analysis sequence was therefore: reverse the encoded text → Base64 decode → UTF-8 decode → inspect the resulting PowerShell. The decoded content was treated as potentially harmful and analyzed without running its execution routine.
+
+## 5. Encryption Logic and Hardcoded Password
+
+Inspection of the deobfuscated script revealed a predefined password and AES encryption functionality. The recovered password was:
+
+`Imf!nfo#2025Sec$`
+
+| Parameter | Recovered value |
+| --- | --- |
+| Cipher | AES-256-CBC |
+| Padding | PKCS7 |
+| Password | Imf!nfo#2025Sec$ |
+| Key derivation | PBKDF2-HMAC-SHA1 |
+| Iterations | 10,000 |
+| Salt | 01 02 03 04 05 06 07 08 |
+
+The significance of the hardcoded password is that an analyst who recovers the key-derivation parameters can reproduce the decryption operation. This is not an AES weakness; it is a consequence of exposing the secret and cryptographic configuration in recoverable malware code.
+
+## 6. Recovery of Encrypted Documents
+
+Two affected files were located on the desktop and exported from the forensic image: IMF-Secret.enc and IMF-Mission.enc. The analyst used the recovered password and the script’s encryption parameters to reverse the AES operation. The first decrypted document, IMF-Secret, did not contain the requested flag. The second, IMF-Mission, was restored to a readable PDF and contained the secret string at the bottom of the document.
+
+The process was performed on exported copies of the evidence. The decryption script must use the original algorithm, key derivation, IV handling, and padding rules; simply changing the file extension would not restore the PDFs.
+
+![Evidence screenshot 9](/writeups/silent-breach/figure-9.png)
+
+*Figure 9 — Recovered PDF document viewed after decryption.*
+
+## 7. Final Answer and Investigation Outcome
+
+`CyberDefenders{N3v3r_eX3cuTe_F!l3$_dOwnL0ded_fr0m_M@lic10u5_$erV3r}`
+
+The secret string was found in the recovered IMF-Mission PDF. The case demonstrates a complete forensic chain: image examination, executable hashing and reputation checking, browser-download attribution, application artifact recovery, static payload deobfuscation, cryptographic analysis, and restoration of affected files.
+
+## 8. Key Findings and Analyst Notes
+
+• The executable name IMF-Info.pdf.exe disguised an executable as a PDF-like download.
+• Edge’s SQLite History database provided the decisive download evidence.
+• The Windows Mail package identifier in NTUSER.DAT was a pivot to HxStore.hxd, not the email message itself.
+• The PowerShell payload used character reversal plus Base64 encoding, followed by Invoke-Expression.
+• Recovery was possible because the encryption password and derivation settings were embedded in the script.
+• VirusTotal findings and challenge hints were supporting leads; local artifacts supplied the primary forensic evidence.
+
+Evidence limitations: The precise download URL is omitted because the provided screenshots do not show it clearly. No original forensic image or original executable was supplied with this writeup request, so the report distinguishes the investigator’s described steps from details visible in screenshots. The attached screenshots include a blank/corrupted image that was intentionally excluded.
