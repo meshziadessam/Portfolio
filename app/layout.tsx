@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import '@fontsource-variable/geist';
 import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/barlow-condensed/600.css';
 import './globals.css';
 import { site } from '../config/site';
 

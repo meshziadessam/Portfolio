@@ -330,3 +330,73 @@ h3 { font-size: 1.55rem; }
 .markdown-content tr:nth-child(even) { background:var(--panel); }
 .word-import { margin-bottom:2rem; max-width:48rem; }
 .editor-library { margin-bottom:1.5rem; display:grid; gap:1rem; } .editor-library label { display:grid; gap:.5rem; } .editor-library select { padding:.7rem; background:var(--panel); border:1px solid var(--line); }
+
+.admin-heading { display:flex; justify-content:space-between; align-items:end; flex-wrap:wrap; gap:1rem; margin-bottom:1.75rem; }
+.admin-heading h1 { font-size:clamp(2.2rem,5vw,3.8rem); margin:.4rem 0 0; }
+.admin-heading > p { color:var(--muted); max-width:32ch; }
+.admin-tabs { display:flex; gap:.35rem; border-bottom:1px solid var(--line); margin-bottom:2rem; }
+.admin-tabs button { display:flex; align-items:center; gap:.55rem; padding:.9rem 1rem; color:var(--muted); border-bottom:2px solid transparent; }
+.admin-tabs button[aria-pressed=true] { color:var(--accent); border-color:var(--accent); }
+.admin-workspace .editor-settings { padding:1.35rem; gap:1rem; }
+.admin-workspace .editor-settings:not(.word-import) { position:sticky; top:6rem; }
+.admin-workspace .editor-settings input,.admin-workspace .editor-settings select { min-height:2.7rem; }
+.admin-workspace .editor-settings input[type=checkbox] { min-height:auto; }
+.admin-workspace .editor-settings .button { width:100%; justify-content:center; border-radius:6px; }
+.admin-workspace .editor-document { min-height:35rem; }
+.editor-library .detail-panel { display:grid; gap:.75rem; }
+.editor-library .detail-panel > div { display:grid; gap:.4rem; }
+.editor-library :is(input,textarea) { padding:.7rem; border:1px solid var(--line); background:var(--bg); border-radius:6px; width:100%; }
+.editor-library select { max-width:40rem; border-radius:6px; }
+.editor-readme details { border:1px solid var(--line); border-radius:6px; padding:.75rem; }
+.editor-readme summary { color:var(--ink); font-size:.9rem; }
+.editor-readme details textarea { margin-top:.75rem; padding:.8rem; border:1px solid var(--line); border-radius:5px; background:var(--bg); min-height:18rem; }
+.editor-readme .editor-preview .markdown-content { margin-top:1rem; }
+.admin-workspace input[type=file] { font-size:.85rem; color:var(--muted); padding:.7rem; border:1px dashed var(--line); border-radius:6px; max-width:100%; }
+.admin-workspace input[type=file]::file-selector-button { padding:.45rem .7rem; border:0; border-radius:4px; background:#ffa88320; color:var(--accent); margin-right:.7rem; cursor:pointer; }
+.admin-workspace .word-import { margin-inline:auto; max-width:45rem; padding:clamp(1.25rem,4vw,2.5rem); gap:1.25rem; }
+.word-import > p { color:var(--muted); }
+.word-import .upload-zone { padding:1.5rem; border:1px dashed #ffa88370; border-radius:8px; background:#ffa88306; gap:.65rem; }
+.upload-zone > span { font-size:1rem; font-weight:600; overflow-wrap:anywhere; }
+.upload-zone small { color:var(--muted); }
+.admin-workspace .upload-zone input[type=file] { border:0; padding:0; }
+.admin-workspace [role=status]:not(:empty) { padding:.75rem; border:1px solid var(--line); border-radius:6px; overflow-wrap:anywhere; font-size:.9rem; }
+.admin-workspace .button:disabled { opacity:.6; cursor:wait; }
+@media(max-width:760px) {
+ .admin-tabs button { font-size:.85rem; padding:.75rem .55rem; gap:.35rem; }
+ .admin-workspace .editor-settings:not(.word-import) { position:static; }
+}
+
+.hero-description { font-family:var(--mono); font-size:clamp(.9rem,1.6vw,1.05rem); line-height:1.65; }
+.hero h1,.about-hero h1 { font-family:"Barlow Condensed",sans-serif; font-weight:600; letter-spacing:-.025em; }
+.admin-workspace .content-editor { grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; }
+.admin-workspace .editor-document,.live-preview { max-height:75vh; overflow:auto; min-height:30rem; }
+.live-preview { padding:1.5rem; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+.live-preview > h3,.markdown-edit-pane h3 { font-size:1rem; margin-bottom:1rem; letter-spacing:0; color:var(--accent); }
+.admin-workspace .editor-readme textarea { width:100%; min-height:20rem; font:.85rem/1.7 var(--mono); background:var(--bg); padding:1rem; border:1px solid var(--line); border-radius:6px; }
+.admin-workspace .content-editor > .editor-settings { grid-column:1/-1; position:static; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); align-items:end; }
+.editor-settings > h2,.editor-settings > [role=status] { grid-column:1/-1; }
+@media(max-width:760px) { .admin-workspace .content-editor { grid-template-columns:1fr; } .live-preview { max-height:50vh; min-height:10rem; } }
+
+.admin-workspace .editor-document { padding:0; display:flex; flex-direction:column; }
+.admin-workspace .editor-title,.admin-workspace .editor-summary { display:none; }
+.admin-workspace .editor-readme { display:flex; flex-direction:column; margin:0; padding:1rem; min-height:70vh; }
+.admin-workspace .markdown-edit-pane { order:-1; flex:1; display:flex; flex-direction:column; }
+.admin-workspace .markdown-edit-pane textarea { flex:1; min-height:52vh; resize:vertical; border:0; background:transparent; padding:0; }
+.admin-workspace .editor-readme > label { font-size:.8rem; color:var(--muted); }
+.admin-workspace .editor-readme > .text-link { display:none; }
+
+.editor-page-heading { grid-column:1/-1; padding:1.5rem; background:var(--panel); border:1px solid var(--line); border-radius:12px; display:grid; gap:1rem; }
+.editor-page-heading label { display:grid; gap:.4rem; font-size:.8rem; color:var(--muted); }
+.editor-page-heading .page-title-input { width:100%; background:transparent; font-size:clamp(1.5rem,3vw,2.2rem); color:var(--ink); font-weight:650; }
+.editor-page-heading .page-summary-input { width:100%; background:transparent; color:var(--ink); font-size:1rem; line-height:1.6; resize:vertical; }
+
+.unified-import { grid-column:1/-1; display:grid; gap:.5rem; padding:1.1rem 1.4rem; border:1px dashed var(--line); border-radius:10px; background:var(--panel); }
+.unified-import > span { color:var(--ink); font-weight:600; }
+.unified-import small { color:var(--muted); }
+.editor-page-heading { gap:.9rem; }
+.editor-page-heading label:first-child { padding-bottom:.7rem; border-bottom:1px solid var(--line); }
+
+.hero-description { max-width:72ch; }
+.hero .profile-layout { grid-template-columns:minmax(0,1fr); }
+.hero .hero-content > div { max-width:52rem; }
+@media (max-width:760px) { .hero-description { max-width:100%; } }

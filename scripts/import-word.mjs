@@ -50,6 +50,14 @@ export async function importWord(request,response,origin) {
     const kind=form.get('kind');
     if(!(file instanceof File)||!file.name.toLowerCase().endsWith('.docx')||!['projects','writeups'].includes(kind)) return reply(400,{error:'Choose a .docx file and a destination.'});
     const {data,warnings}=await parseWord(Buffer.from(await file.arrayBuffer()),file.name,kind);
-    reply(201,{path:await store(data),warnings});
+    if(form.get('preview') === 'true') {
+      const fields={};
+      const assets=[];
+      for(const [key,value] of data) {
+        if(value instanceof File) assets.push({name:key.slice(6),type:value.type,bytes:Buffer.from(await value.arrayBuffer()).toString('base64')});
+        else fields[key]=value;
+      }
+      reply(200,{fields,assets,warnings});
+    } else reply(201,{path:await store(data),warnings});
   } catch(error) {reply(error.status||400,{error:error.message||'Import failed.'});}
 }

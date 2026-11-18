@@ -2,16 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Readme } from './Readme';
-import { Heading2, ImageIcon, Link2, Plus, Text, Trash2 } from 'lucide-react';
+
 
 type Block = {kind: 'Text' | 'Heading' | 'Link' | 'Image'; text: string; url: string; file?: File};
 const blank: Block = {kind: 'Text', text: '', url: ''};
-const blockTypes = [
-  {kind:'Text', label:'Paragraph', icon:Text},
-  {kind:'Heading', label:'Heading', icon:Heading2},
-  {kind:'Image', label:'Image', icon:ImageIcon},
-  {kind:'Link', label:'Link', icon:Link2},
-] as const;
 
 function safeUrl(value: string) {
   if (/^\/(?!\/)[a-z0-9/_.%~-]+$/i.test(value)) return value;
@@ -27,7 +21,7 @@ function escapeMdx(value: string) {
 
 type Entry = {kind:string;slug:string;title:string;description:string;category:string;date:string;published:boolean;revision:string;content:string;sections:{title:string;text:string}[]};
 
-export function ContentEditor() {
+export function ContentEditor({mode = 'new'}: {mode?: 'new' | 'edit'}) {
   const [entries,setEntries]=useState<Entry[]>([]);
   const [editing,setEditing]=useState<Entry | null>(null);
   useEffect(() => {
@@ -36,15 +30,15 @@ export function ContentEditor() {
     });
   }, []);
   const [kind, setKind] = useState('writeups');
+  const [importAssets,setImportAssets]=useState<{name:string;file:File}[]>([]);
+
   const [readme, setReadme] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([blank]);
-  const [menu, setMenu] = useState<number | null>(null);
-  const [status, setStatus] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  function update(index: number, changes: Partial<Block>) {
-    setBlocks(previous => previous.map((block, i) => i === index ? {...block, ...changes} : block));
-  }
+  const [status, setStatus] = useState('');
+  const [importing,setImporting]=useState(false);
+  const [importName,setImportName]=useState('');
+  const [saving, setSaving] = useState(false);
 
   async function save(data: FormData) {
     setSaving(true);
@@ -83,7 +77,14 @@ export function ContentEditor() {
         data.set('sections', JSON.stringify(editing.sections));
       }
       data.set('content', content);
-      for (const asset of assets) data.append('asset:' + asset.name, asset.file);
+            for (const asset of assets) data.append('asset:' + asset.name, asset.file);
+      let finalContent=content;
+      for(const asset of importAssets){
+        const name=slug+'-'+crypto.randomUUID()+'.'+asset.name.split('.').pop();
+        finalContent=finalContent.replaceAll(asset.name,name);
+        data.append('asset:'+name,asset.file);
+      }
+      data.set('content',finalContent);
       const response = await fetch('/_admin/save', {method:'POST', body:data});
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save content.');
@@ -101,92 +102,76 @@ export function ContentEditor() {
     }
   }
 
-  function chooseBlock(index: number, type: Block['kind']) {
-    setBlocks(previous => index === previous.length
-      ? [...previous, {...blank, kind:type}]
-      : previous.map((block, i) => i === index ? {...block, kind:type} : block));
-    setMenu(null);
-    requestAnimationFrame(() => document.getElementById('editor-block-' + index)?.focus());
-  }
-
   return <>
-    <div className="editor-library">
+    {mode === 'edit' && <div className="editor-library">
       <label>Edit existing content<select value={editing ? editing.kind + '/' + editing.slug : ''} onChange={event=>{
         const entry=entries.find(item=>item.kind+'/'+item.slug===event.target.value)||null;
         setEditing(entry);
         setKind(entry?.kind || 'writeups');
         setReadme(entry?.content || '');
         setBlocks([blank]);
-        setMenu(null);
+        setImportAssets([]);
+
         setStatus('');
       }}>
-        <option value="">New entry</option>
+        <option value="">Choose a page to edit…</option>
         {entries.map(entry=><option key={entry.kind+'/'+entry.slug} value={entry.kind+'/'+entry.slug}>{entry.kind === 'projects'?'Project':'Writeup'} — {entry.title}</option>)}
       </select></label>
-      {editing?.sections.length ? <div className="detail-panel"><h3>Existing project sections</h3>{editing.sections.map((section,index)=><div key={index}><input aria-label="Section title" value={section.title} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,title:event.target.value}:item)})}/><textarea aria-label="Section text" value={section.text} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,text:event.target.value}:item)})}/></div>)}<p>Section changes are saved with this project.</p></div>:null}
-    </div>
-    <form key={editing ? editing.kind+'/'+editing.slug : 'new'} className="content-editor" onSubmit={event => {event.preventDefault(); void save(new FormData(event.currentTarget));}}>
+      {editing?.sections.length ? <div className="detail-panel"><h3>Project sections</h3>{editing.sections.map((section,index)=><div key={index}><input aria-label="Section title" value={section.title} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,title:event.target.value}:item)})}/><textarea aria-label="Section text" value={section.text} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,text:event.target.value}:item)})}/></div>)}<p>Section changes are saved with this project.</p></div>:null}
+    </div>}
+    {(mode !== 'edit' || editing) && <form key={editing ? editing.kind+'/'+editing.slug : 'new'} className="content-editor" onSubmit={event => {event.preventDefault(); void save(new FormData(event.currentTarget));}}>
+    <div className="editor-page-heading"><label>Title<input className="page-title-input" defaultValue={editing?.title} name="title" aria-label="Title" placeholder="Untitled" required/></label><label>Summary<textarea className="page-summary-input" defaultValue={editing?.description} name="description" aria-label="Summary" placeholder="Add a short summary…" rows={2} required/></label></div>
+    {mode === 'new' && <label className="unified-import">
+      <span>Import Word or Markdown</span>
+      <small>{importName || 'Choose a .docx, .md, or .markdown file. The format is detected automatically.'}</small>
+      <input type="file" accept=".docx,.md,.markdown" disabled={importing || saving} onChange={async event=>{
+        const input=event.currentTarget;
+        const form=input.form;
+        const file=input.files?.[0];
+        if(!file || !form)return;
+        setImporting(true);
+        try {
+          if(file.size>25*1024*1024)throw new Error('Choose a file smaller than 25 MB.');
+          if(/\.docx$/i.test(file.name)){
+            const upload=new FormData();
+            upload.set('kind',kind);upload.set('document',file);upload.set('preview','true');
+            const response=await fetch('/_admin/import-word',{method:'POST',body:upload});
+            const result=await response.json();
+            if(!response.ok)throw new Error(result.error);
+            setReadme(result.fields.content);
+            setImportAssets(result.assets.map((asset:{name:string;type:string;bytes:string})=>({
+              name:asset.name,file:new File([Uint8Array.from(atob(asset.bytes),c=>c.charCodeAt(0))],asset.name,{type:asset.type})
+            })));
+            for(const name of ['title','description','category','date','slug']){
+              const field=form.elements.namedItem(name) as HTMLInputElement | null;
+              if(field)field.value=result.fields[name];
+            }
+            setStatus('Word imported.'+(result.warnings.length?' '+result.warnings.join(' · '):''));
+          }else if(/\.(md|markdown)$/i.test(file.name)){
+            const markdown=await file.text();
+            if(!markdown.trim())throw new Error('The file is empty.');
+            setReadme(markdown);setImportAssets([]);
+            setStatus('Markdown imported.');
+          }else throw new Error('Choose a Word or Markdown file.');
+          setImportName(file.name);
+        }catch(error){setStatus(error instanceof Error?error.message:'Import failed.');}
+        finally{setImporting(false);input.value='';}
+      }}/>
+      {importing && <span role="status">Importing…</span>}
+    </label>}
     <div className="editor-document">
-      <input className="editor-title" defaultValue={editing?.title} name="title" aria-label="Title" placeholder="Untitled" required/>
-      <textarea className="editor-summary" defaultValue={editing?.description} name="description" aria-label="Summary" placeholder="Add a short summary…" rows={2} required/>
       <div className="editor-readme">
-        <label>Import README.md<input type="file" accept=".md,.markdown,text/markdown" onChange={async event => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          try {
-            if (file.size > 1024 * 1024) throw new Error('Choose a Markdown file under 1 MB.');
-            const markdown = await file.text();
-            if (!markdown.trim()) throw new Error('The Markdown file is empty.');
-            setReadme(markdown);
-            setStatus('Imported ' + file.name);
-          } catch (error) {
-            setStatus(error instanceof Error ? error.message : 'Could not import the README.');
-          } finally {
-            event.target.value = '';
-          }
-        }}/></label>
-        {readme && <>
-          <details><summary>Edit Markdown</summary><textarea aria-label="README Markdown" value={readme} onChange={event => setReadme(event.target.value)} rows={8}/></details>
-          <Readme source={readme}/>
+
+
+        <>
+          <div className="markdown-edit-pane"><h3>Edit content</h3><textarea aria-label="README Markdown" value={readme} onChange={event => setReadme(event.target.value)} rows={18}/></div>
+          
           <button className="text-link" type="button" onClick={() => setReadme('')}>Remove README</button>
-        </>}
-      </div>
-      <div className="editor-blocks" aria-label="Content blocks">
-        {blocks.map((block, index) => <div className="editor-row" key={index}>
-          <button type="button" className="editor-icon" aria-label="Change block type" aria-expanded={menu === index} onClick={() => setMenu(menu === index ? null : index)}><Plus size={17}/></button>
-          <div className="editor-row-content">
-            <textarea id={'editor-block-' + index} className={'editor-' + block.kind.toLowerCase()} rows={block.kind === 'Text' ? 3 : 1}
-              aria-label={block.kind + ' block'}
-              placeholder={block.kind === 'Text' ? 'Write something, or type / for blocks…' : block.kind === 'Heading' ? 'Heading' : block.kind === 'Image' ? 'Image description' : 'Link text'}
-              value={block.text} onChange={event => {
-                if (!block.text && event.target.value === '/') setMenu(index);
-                else update(index, {text:event.target.value});
-              }}/>
-            {block.kind === 'Image' && <>
-              <input type="file" aria-label="Choose image" accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-                onChange={event => update(index, {file:event.target.files?.[0]})}/>
-              {block.file && <p className="editor-image-name">{block.file.name}</p>}
-            </>}
-            {block.kind === 'Link' && <input aria-label={block.kind + ' URL'} placeholder="Paste a URL or /images/filename" value={block.url} required onChange={event => update(index, {url:event.target.value})}/>}
-          </div>
-          <button type="button" className="editor-icon" aria-label="Remove block" onClick={() => {
-            setBlocks(previous => previous.length === 1 ? [blank] : previous.filter((_, i) => i !== index));
-            setMenu(null);
-          }}><Trash2 size={15}/></button>
-          {menu === index && <div className="editor-menu">{blockTypes.map(({kind,label,icon:Icon}) =>
-            <button type="button" key={kind} onClick={() => chooseBlock(index, kind)}><Icon size={16}/>{label}</button>
-          )}</div>}
-        </div>)}
-        <div className="editor-add">
-          <button type="button" className="text-link" aria-expanded={menu === blocks.length} onClick={() => setMenu(menu === blocks.length ? null : blocks.length)}><Plus size={17}/> Add block</button>
-          {menu === blocks.length && <div className="editor-menu">{blockTypes.map(({kind,label,icon:Icon}) =>
-            <button type="button" key={kind} onClick={() => chooseBlock(blocks.length, kind)}><Icon size={16}/>{label}</button>
-          )}</div>}
-        </div>
+        </>
       </div>
     </div>
-    <aside className="editor-settings" aria-label="Content settings">
-      <h2>Details</h2>
+    <section className="live-preview"><h3>Preview</h3><Readme source={[readme,...blocks.map(block=>block.kind === 'Heading' ? '## '+block.text : block.kind === 'Link' ? '['+block.text+']('+block.url+')' : block.kind === 'Image' ? '*Image: '+(block.file?.name || block.text)+'*' : block.text)].join('\n\n')}/></section><aside className="editor-settings" aria-label="Content settings">
+      <h2>Page settings</h2>
       <label>Type<select disabled={!!editing} value={kind} onChange={event => setKind(event.target.value)}><option value="writeups">Writeup</option><option value="projects">Project</option></select></label>
       <label>URL slug<input readOnly={!!editing} defaultValue={editing?.slug} name="slug" placeholder="my-new-project" required/></label>
       <label>Category<input defaultValue={editing?.category} name="category" required/></label>
@@ -194,8 +179,8 @@ export function ContentEditor() {
         <label>Date<input defaultValue={editing?.date} name="date" type="date" required/></label>
         <label className="editor-checkbox"><input defaultChecked={editing?.published} name="published" type="checkbox"/> Publish this writeup</label>
       </>}
-      <button className="button" disabled={saving}>{saving ? 'Saving…' : 'Save to workspace'}</button>
+      <button className="button" disabled={saving || importing}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create page'}</button>
       <p role="status">{status}</p>
     </aside>
-  </form></>;
+  </form>}</>;
 }
