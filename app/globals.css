@@ -328,3 +328,5 @@ h3 { font-size: 1.55rem; }
 .markdown-content pre code.hljs { background:transparent; padding:0; }
 .markdown-content .task-list-item { list-style:none; }
 .markdown-content tr:nth-child(even) { background:var(--panel); }
+.word-import { margin-bottom:2rem; max-width:48rem; }
+.editor-library { margin-bottom:1.5rem; display:grid; gap:1rem; } .editor-library label { display:grid; gap:.5rem; } .editor-library select { padding:.7rem; background:var(--panel); border:1px solid var(--line); }

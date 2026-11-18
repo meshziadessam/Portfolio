@@ -1,4 +1,6 @@
-import { mkdir, writeFile, link, rm } from 'node:fs/promises';
+import { mkdir, writeFile, link, rm, readFile, rename } from 'node:fs/promises';
+import matter from 'gray-matter';
+import { revision } from './content-library.mjs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +33,7 @@ async function receive(request) {
   return new Response(Buffer.concat(chunks), {headers:{'Content-Type':contentType}}).formData();
 }
 
-async function store(data) {
+export async function store(data) {
   const field = name => {
     const value = data.get(name);
     return typeof value === 'string' ? value.trim() : '';
@@ -46,7 +48,7 @@ async function store(data) {
   if (!['writeups','projects'].includes(kind) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 100) {
     throw new SaveError('Choose a content type and a valid URL slug.');
   }
-  if (!title || !description || !category || !content) throw new SaveError('Fill in the title, category, summary, and content.');
+  if (!title || !description || !category || (!content && !field('sections'))) throw new SaveError('Fill in the title, category, summary, and content.');
   if (kind === 'writeups' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new SaveError('Choose a publication date.');
 
   const assets = [];
@@ -66,12 +68,19 @@ async function store(data) {
   const uploadDirectory = join(root, 'public', 'images', 'content');
   const temporary = join(directory, '.' + randomUUID() + '.tmp');
   const savedImages = [];
+  const destination = join(directory, filename);
+  let original;
+  if (field('revision')) {
+    const raw = await readFile(destination, 'utf8');
+    if (revision(raw) !== field('revision')) throw new SaveError('This entry changed since you opened it. Reload it before saving.', 409);
+    original = kind === 'projects' ? JSON.parse(raw) : matter(raw).data;
+  }
+  const sections = field('sections') ? JSON.parse(field('sections')) : original?.sections || [];
+  if (!Array.isArray(sections) || sections.some(item => typeof item.title !== 'string' || typeof item.text !== 'string')) throw new SaveError('Invalid project sections.');
+  const metadata = {...original, title, description, category};
   const body = kind === 'writeups'
-    ? ['---', 'title: ' + JSON.stringify(title), 'description: ' + JSON.stringify(description),
-      'category: ' + JSON.stringify(category), 'format: markdown', 'date: ' + JSON.stringify(date),
-      'published: ' + (field('published') === 'on'), '---', '', content, ''].join('\n')
-    : JSON.stringify({title, description, category, visual:'artifact', demo:false, tools:[], sections:[], markdown:content}, null, 2) + '\n';
-
+    ? matter.stringify(content, {...metadata, format:original?.format || 'markdown', date, published:field('published') === 'on'})
+    : JSON.stringify({...metadata, visual:original?.visual || 'artifact', demo:original?.demo || false, tools:original?.tools || [], sections, markdown:content}, null, 2) + '\n';
   await mkdir(directory, {recursive:true});
   try {
     await writeFile(temporary, body, {flag:'wx'});
@@ -81,7 +90,12 @@ async function store(data) {
       await writeFile(path, Buffer.from(await file.arrayBuffer()), {flag:'wx'});
       savedImages.push(path);
     }
-    await link(temporary, join(directory, filename));
+    if (original) {
+      if (revision(await readFile(destination, 'utf8')) !== field('revision')) throw new SaveError('This entry has changed. Reload it before saving.', 409);
+      await rename(temporary, destination);
+    } else {
+      await link(temporary, destination);
+    }
   } catch (error) {
     await Promise.allSettled(savedImages.map(path => rm(path, {force:true})));
     if (error.code === 'EEXIST') throw new SaveError('That slug already exists. Pick a new one.', 409);

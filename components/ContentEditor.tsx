@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Readme } from './Readme';
 import { Heading2, ImageIcon, Link2, Plus, Text, Trash2 } from 'lucide-react';
 
@@ -25,7 +25,16 @@ function escapeMdx(value: string) {
     .replace(/([\\`*_\[\]#~!|])/g, '\\$1');
 }
 
+type Entry = {kind:string;slug:string;title:string;description:string;category:string;date:string;published:boolean;revision:string;content:string;sections:{title:string;text:string}[]};
+
 export function ContentEditor() {
+  const [entries,setEntries]=useState<Entry[]>([]);
+  const [editing,setEditing]=useState<Entry | null>(null);
+  useEffect(() => {
+    void fetch('/_admin/content').then(response=>response.json()).then(data=>{
+      if(Array.isArray(data)) setEntries(data);
+    });
+  }, []);
   const [kind, setKind] = useState('writeups');
   const [readme, setReadme] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([blank]);
@@ -66,15 +75,25 @@ export function ContentEditor() {
         return [label];
       }).join('\n\n');
       const content = [readme.trim(), blockContent].filter(Boolean).join('\n\n');
-      if (!content) throw new Error('Add at least one content block.');
+      if (!content && !editing?.sections.length) throw new Error('Add at least one content block.');
 
       data.set('kind', kind);
+      if(editing) {
+        data.set('revision', editing.revision);
+        data.set('sections', JSON.stringify(editing.sections));
+      }
       data.set('content', content);
       for (const asset of assets) data.append('asset:' + asset.name, asset.file);
       const response = await fetch('/_admin/save', {method:'POST', body:data});
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save content.');
       setStatus('Saved ' + result.path);
+      const refreshed = await fetch('/_admin/content').then(response=>response.json());
+      if(Array.isArray(refreshed)) {
+        setEntries(refreshed);
+        const entry=refreshed.find((entry:Entry)=>entry.kind===kind && entry.slug===slug);
+        if(entry) { setEditing(entry); setReadme(entry.content); setBlocks([blank]); }
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not save content.');
     } finally {
@@ -90,10 +109,26 @@ export function ContentEditor() {
     requestAnimationFrame(() => document.getElementById('editor-block-' + index)?.focus());
   }
 
-  return <form className="content-editor" onSubmit={event => {event.preventDefault(); void save(new FormData(event.currentTarget));}}>
+  return <>
+    <div className="editor-library">
+      <label>Edit existing content<select value={editing ? editing.kind + '/' + editing.slug : ''} onChange={event=>{
+        const entry=entries.find(item=>item.kind+'/'+item.slug===event.target.value)||null;
+        setEditing(entry);
+        setKind(entry?.kind || 'writeups');
+        setReadme(entry?.content || '');
+        setBlocks([blank]);
+        setMenu(null);
+        setStatus('');
+      }}>
+        <option value="">New entry</option>
+        {entries.map(entry=><option key={entry.kind+'/'+entry.slug} value={entry.kind+'/'+entry.slug}>{entry.kind === 'projects'?'Project':'Writeup'} — {entry.title}</option>)}
+      </select></label>
+      {editing?.sections.length ? <div className="detail-panel"><h3>Existing project sections</h3>{editing.sections.map((section,index)=><div key={index}><input aria-label="Section title" value={section.title} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,title:event.target.value}:item)})}/><textarea aria-label="Section text" value={section.text} onChange={event=>setEditing({...editing,sections:editing.sections.map(item=>item===section?{...item,text:event.target.value}:item)})}/></div>)}<p>Section changes are saved with this project.</p></div>:null}
+    </div>
+    <form key={editing ? editing.kind+'/'+editing.slug : 'new'} className="content-editor" onSubmit={event => {event.preventDefault(); void save(new FormData(event.currentTarget));}}>
     <div className="editor-document">
-      <input className="editor-title" name="title" aria-label="Title" placeholder="Untitled" required/>
-      <textarea className="editor-summary" name="description" aria-label="Summary" placeholder="Add a short summary…" rows={2} required/>
+      <input className="editor-title" defaultValue={editing?.title} name="title" aria-label="Title" placeholder="Untitled" required/>
+      <textarea className="editor-summary" defaultValue={editing?.description} name="description" aria-label="Summary" placeholder="Add a short summary…" rows={2} required/>
       <div className="editor-readme">
         <label>Import README.md<input type="file" accept=".md,.markdown,text/markdown" onChange={async event => {
           const file = event.target.files?.[0];
@@ -152,15 +187,15 @@ export function ContentEditor() {
     </div>
     <aside className="editor-settings" aria-label="Content settings">
       <h2>Details</h2>
-      <label>Type<select value={kind} onChange={event => setKind(event.target.value)}><option value="writeups">Writeup</option><option value="projects">Project</option></select></label>
-      <label>URL slug<input name="slug" placeholder="my-new-project" required/></label>
-      <label>Category<input name="category" required/></label>
+      <label>Type<select disabled={!!editing} value={kind} onChange={event => setKind(event.target.value)}><option value="writeups">Writeup</option><option value="projects">Project</option></select></label>
+      <label>URL slug<input readOnly={!!editing} defaultValue={editing?.slug} name="slug" placeholder="my-new-project" required/></label>
+      <label>Category<input defaultValue={editing?.category} name="category" required/></label>
       {kind === 'writeups' && <>
-        <label>Date<input name="date" type="date" required/></label>
-        <label className="editor-checkbox"><input name="published" type="checkbox"/> Publish this writeup</label>
+        <label>Date<input defaultValue={editing?.date} name="date" type="date" required/></label>
+        <label className="editor-checkbox"><input defaultChecked={editing?.published} name="published" type="checkbox"/> Publish this writeup</label>
       </>}
       <button className="button" disabled={saving}>{saving ? 'Saving…' : 'Save to workspace'}</button>
       <p role="status">{status}</p>
     </aside>
-  </form>;
+  </form></>;
 }

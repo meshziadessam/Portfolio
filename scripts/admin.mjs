@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import next from 'next';
+import { importWord } from './import-word.mjs';
+import { contentLibrary } from './content-library.mjs';
 import { saveContent } from './save-content.mjs';
 
 const password = process.env.PORTFOLIO_ADMIN_PASSWORD;
@@ -22,6 +24,14 @@ createServer((request, response) => {
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     response.writeHead(401, {'WWW-Authenticate': 'Basic realm="Portfolio editor"'});
     response.end('Authentication required.');
+    return;
+  }
+  if (request.url === '/_admin/import-word') {
+    void importWord(request, response, 'http://' + hostname + ':' + port);
+    return;
+  }
+  if (request.url === '/_admin/content') {
+    void contentLibrary(request, response);
     return;
   }
   if (request.url === '/_admin/save') {

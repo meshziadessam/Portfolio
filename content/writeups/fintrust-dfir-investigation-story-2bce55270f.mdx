@@ -1,0 +1,176 @@
+---
+title: FinTrust Bank Breach
+description: >-
+  You are part of the incident response team at FinTrust Bank. This morning, the
+  network monitoring system flagged unusual outbound traffic patterns from
+  several workstations. Preliminary analysis by the IT department has identified
+  a potential comprom
+category: DFIR
+format: markdown
+date: '2026-11-18'
+published: true
+---
+CyberDefenders | Silent Breach | Medium | Endpoint Forensics
+
+Investigation date: 17 November 2026 • Evidence source: c125-SpottedInTheWild.vhd
+
+Case outcome: Reconstruct an attack timeline by analyzing disk images, event logs, and malicious scripts to identify initial access, persistence, and data exfiltration techniques.
+Official lab: https://cyberdefenders.org/blueteam-ctf-challenges/spottedinthewild/
+
+## Scenario
+
+You are part of the incident response team at FinTrust Bank. This morning, the network monitoring system flagged unusual outbound traffic patterns from several workstations. Preliminary analysis by the IT department has identified a potential compromise linked to an exploited vulnerability in WinRAR software.
+
+## How I started
+
+I began by reading the FinTrust Bank lab scenario. After downloading the evidence, I set up a Windows 10 VM in VMware and started exploring the files rather than jumping straight into the challenge questions. My first stop was the Downloads directory. Inside Telegram Desktop, I noticed a small archive named SANS SEC401.rar, around 30 KB. The name suggested training material, but its size made me curious. That was a reason to investigate, not proof of malware.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-e7d118e9-22bd-4748-859f-8cf19fb14653.png)
+
+*Figure 23 — I inspected the extracted evidence and followed the files under the Telegram Desktop download location.*
+
+I calculated a file hash and checked it on VirusTotal. The result flagged the archive as malicious. At that point I knew I had a strong lead, so I kept the analysis static instead of launching anything inside the archive.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-fdcff141-5277-49f1-b6d4-7822ccd6612f.png)
+
+*Figure 32 — The reputation lookup reinforced my suspicion that this was the malicious archive.*
+
+## The PowerShell clue I found before answering the questions
+
+While browsing the available logs, I also looked at PowerShell activity. An unusual reference to run.ps1 stood out. I found the corresponding file and opened it in Notepad. The script was not immediately readable: it contained Base64-encoded material and reversed text. I moved the content into CyberChef to decode it rather than execute it.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-f2207840-8a7c-4346-9842-735798c24d2b.png)
+
+*Figure 27 — I reviewed PowerShell-related events to trace the script activity.*
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-f5e64dbc-ee0a-41db-935c-bbe708993099.png)
+
+*Figure 28 — I inspected the script as text and looked for the encoded content.*
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-2261029f-ec9d-4d9f-a756-4256111e52cc.png)
+
+*Figure 30 — I used CyberChef to transform the encoded and reversed text into readable PowerShell.*
+
+The recovered PowerShell appeared to perform network-related checks, and I noticed addresses ending in .1 and .5. I initially interpreted this as checking active hosts across an IP range. That is plausible, but the exact scan method and whether both addresses were responsive require the complete decoded script and its output. I did find an output-file variable, which became useful when I reached the data-collection question:
+```powershell
+$outputFile = "$env:UserProfile\\AppData\\Local\\Temp\\BL4356.txt"
+```
+With the Administrator profile in this VM, that expands to:
+```powershell 
+C:\\Users\\Administrator\\AppData\\Local\\Temp\\BL4356.txt.
+``` 
+The script identifies a collection destination; it does not by itself prove that the contents left the machine.
+
+## I started the challenge: Telegram, timestamps, and the WinRAR vulnerability
+
+The first question asked which application had downloaded the malicious file. Because I had found the archive under Telegram Desktop, I answered Telegram, and the platform accepted it. The second question asked for the first download timestamp in UTC. I checked the file properties and used 2024-02-03 07:33:20 UTC. My VM displayed local time two hours ahead, so I paid attention to the timezone conversion rather than copying the displayed clock blindly.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-96022642-d7f2-4c55-8bda-a5b039b2ca88.png)
+
+*Figure 33 — I checked file properties while correlating the download time with UTC.*
+
+Next I needed the exploited CVE. I returned to the reputation information and identified CVE-2023-38831. This is the WinRAR archive-handling vulnerability that can cause a malicious command to execute when a victim opens a document-like item in a specially prepared archive. The important detail is the crafted archive behavior, not merely that a CMD file exists.
+
+## Opening the archive without running the suspicious file
+
+I hesitated before opening the archive because it had already been flagged. I examined its header and saw the PK signature, consistent with a ZIP-based container. Then I inspected the archive contents without running the files. I saw a PDF-looking item and another directory. Inside that directory was the file that answered the next question: SANS SEC401.pdf .cmd.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-5295f596-3d94-42b2-9bb8-91ae4fb771ab.png)
+
+*Figure 18 — The archive listing revealed the misleading PDF-like name ending in .cmd.*
+
+The space before .cmd matters. It makes the filename look like a PDF at a glance, but the final extension identifies a Windows command script. I extracted that file for static inspection, not execution.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-da13645f-cb1f-409f-bb4d-b0841d2254f7.png)
+
+*Figure 21 — I checked the suspicious file at the byte level instead of trusting its displayed name.*
+
+## The CMD file looked like nonsense
+
+For the second-stage URL question, I renamed a copy of the CMD file to .txt so I could inspect it safely. The content looked scrambled: long strings of characters, odd variable names, and expressions repeated hundreds of times. I used Strings to look for readable fragments. There were a few paths and recognizable tokens, but most of the script remained difficult to interpret.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-cbd43c2b-3c82-4f81-9131-7ef470b64063.png)
+
+*Figure 34 — The original CMD script was dominated by environment-variable substring expressions.*
+
+I asked ChatGPT to help identify the pattern. The technique turned out to be CMD environment-variable substring expansion, such as %LzKV:~38,1%. A variable holds a string of characters, and the expression selects one character by index. The script builds real commands by concatenating those selections. Other undefined variables act as noise. This is obfuscation rather than encryption: the character tables are lookup strings, not cryptographic keys.
+```powershell
+set "example=abcdef" → %example:~2,1% → c
+```
+I then used ChatGPT to help write a PowerShell script to deobfuscate the file without executing it. The first attempt did not fully work: the output showed only one decoded variable and many unresolved %LzKV:~...% expressions. I shared the failed output, corrected the order in which the expressions were parsed, and tried again. The readable CMD commands finally emerged.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-52e30d3f-4ed6-4705-9da7-43f5db0cf80b.png)
+
+*Figure 35 — My PowerShell deobfuscation work exposed the structure of the command script.*
+
+## The second-stage URL was right there
+
+Once I could read the CMD, I spotted a bitsadmin download command. It requested a file named amanwhogetsnorest.jpg from a private IP address. This directly answered the second-stage URL question:
+```powershell
+http://172.18.35.10:8000/amanwhogetsnorest.jpg
+```
+The .jpg name was misleading. The following command decoded that file into normal.zip, and another generated PowerShell script expanded the ZIP contents into C:\\Windows\\Temp. The commands showed me how the next payload was intended to arrive, even though the CMD alone could not tell me everything contained in the external ZIP.
+```powershell
+certutil -decode amanwhogetsnorest.jpg normal.zip >nul
+```
+```powershell
+cmd /c "powershell -NOP -EP Bypass C:\\Windows\\Temp\\z.ps1"
+```
+
+## I found the event-log script and the persistence command
+
+Continuing through the recovered CMD, I saw a PowerShell invocation for Eventlogs.ps1. Because the question specifically asked which script tampered with event logs, this was my answer. I could identify the intended script from the command; proving exactly which logs were modified would require the script body or matching Windows events.
+```powershell
+cmd /c "powershell -NOP -EP Bypass C:\\Windows\\Temp\\Eventlogs.ps1"
+```
+I returned to Event Viewer and found the relevant execution time, which I recorded as 2024-02-03 07:38:01 UTC after accounting for the VM timezone. That is four minutes and 41 seconds after the accepted download timestamp.
+
+![](/images/content/fintrust-dfir-investigation-story-2bce55270f-5777dcf3-0e35-425b-812a-7fa166b00167.png)
+
+*Figure 14 — I examined the Windows event details to correlate script execution with the timeline.*
+
+Another decoded line used schtasks to create a scheduled task named whoisthebaba. It was configured to run run.bat every three minutes. This was the persistence command requested by the challenge:
+```powershell
+schtasks /create /sc minute /mo 3 /tn "whoisthebaba" /tr C:\\Windows\\Temp\\run.bat /RL HIGHEST
+```
+The script also attempted to delete the task file later, so I describe this as a persistence attempt rather than claiming the task survived indefinitely. The /RL HIGHEST argument requests the highest available run level; it does not automatically grant administrator privileges.
+
+## The last clue was already in run.ps1
+
+When I reached the question about where the attacker stored harvested data before exfiltration, I remembered the outputFile variable from my early PowerShell investigation. That was why examining run.ps1 before starting the questions turned out to be useful. I expanded the USERPROFILE value for the Administrator account and submitted the full path:
+```powershell
+C:\\Users\\Administrator\\AppData\\Local\\Temp\\BL4356.txt
+```
+The challenge accepted it. I had located the collection output file path, although I did not independently establish successful network exfiltration from this artifact alone.
+
+## What I reconstructed
+
+The attack began when the victim downloaded a malicious archive through Telegram Desktop on February 3, 2024, at 07:33:20 UTC. The archive, disguised as SANS SEC401 training material, was associated with CVE-2023-38831, a WinRAR vulnerability that allows attackers to execute malicious code through specially crafted archives.
+
+Inside the archive, the attacker concealed a malicious CMD script named SANS SEC401.pdf .cmd, making it appear to be a legitimate PDF document. The script used CMD environment-variable obfuscation to hide its actual commands and evade straightforward inspection.
+
+Once executed, the CMD script was designed to download a second-stage payload from http://172.18.35.10:8000/amanwhogetsnorest.jpg using bitsadmin. Despite its .jpg extension, the downloaded file was intended to be decoded into a ZIP archive using certutil and extracted through PowerShell.
+
+The attacker also attempted to establish persistence by creating a scheduled task named whoisthebaba, configured to execute C:\\Windows\\Temp\\run.bat every three minutes with the highest available privileges.
+
+Additional PowerShell activity was associated with network-related operations and local data collection. One of the scripts referenced C:\\Users\\Administrator\\AppData\\Local\\Temp\\BL4356.txt as an output file for collected information, potentially preparing the data for exfiltration.
+
+To cover their tracks, the attacker used a PowerShell script named Eventlogs.ps1, associated with event log tampering. Its execution was recorded on February 3, 2024, at 07:38:01 UTC, approximately four minutes and forty-one seconds after the initial archive download.
+
+Although the decoded CMD script revealed the intended sequence of malicious operations, the exact execution timestamps of the intermediate stages were not independently established during the investigation.
+
+## Artifacts I recorded
+| Artifact | Value |
+| --- | --- |
+| Entry application| Telegram |
+| Archive| SANS SEC401.rar |
+| Exploited CVE| CVE-2023-38831 |
+| Malicious entry| SANS SEC401.pdf .cmd |
+| Second-stage URL| http://172.18.35.10:8000/amanwhogetsnorest.jpg |
+| Persistence task| whoisthebaba → C:\\Windows\\Temp\\run.bat |
+| Log-related script| C:\\Windows\\Temp\\Eventlogs.ps1 |
+| Collection output| C:\\Users\\Administrator\\AppData\\Local\\Temp\\BL4356.txt |
+
+## My takeaway
+
+The most valuable part of this lab for me was not simply submitting the correct answers. I followed a lead from a small suspicious archive, used reputation and file-signature checks, connected logs with files, decoded a PowerShell script, and worked through a CMD obfuscation problem that did not decode correctly on the first attempt. Each clue made the next one easier to interpret. The investigation also reminded me to separate what a command is designed to do from what the evidence proves actually happened.
